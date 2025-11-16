@@ -1,0 +1,7 @@
+{
+  "name": "EchoMind - AI Dream Buddy",
+  "description": "A personalized AI dream listener buddy that interprets dreams using context and emotion, providing friendly insights and suggestions in a gamified, supportive interface for children and teenagers.",
+  "requestFramePermissions": [
+    "microphone"
+  ]
+}

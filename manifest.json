@@ -1,0 +1,18 @@
+{
+  "short_name": "EchoMind",
+  "name": "EchoMind - AI Dream Buddy",
+  "description": "Your Personal Dream Listener Buddy",
+  "icons": [
+    {
+      "src": "/icon.svg",
+      "type": "image/svg+xml",
+      "sizes": "192x192 512x512",
+      "purpose": "any maskable"
+    }
+  ],
+  "start_url": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "theme_color": "#4338ca",
+  "background_color": "#1e1b4b"
+}
