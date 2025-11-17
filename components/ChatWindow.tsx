@@ -4,7 +4,7 @@ import { analyzeDream } from '../services/geminiService';
 import { PaperPlaneIcon, UserIcon, EchoAvatarIcon, MicIcon, CheckCircleIcon, CloudUploadIcon } from './Icons';
 import { MOOD_OPTIONS, ECHO_PERSONALITIES, APP_THEMES } from '../constants';
 import { RecordDreamModal } from './RecordDreamModal';
-import { CloudUrlModal } from './CloudUrlModal';
+import { UploadDreamModal } from './CloudUrlModal';
 import { useVoiceEmotion } from '../hooks/useVoiceEmotion';
 
 interface ChatWindowProps {
@@ -77,7 +77,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({ addDream, isNightMode, s
   const [isLoading, setIsLoading] = useState(false);
   const [pendingDream, setPendingDream] = useState<Omit<Dream, 'mood'> | null>(null);
   const [isRecordModalOpen, setIsRecordModalOpen] = useState(false);
-  const [isCloudModalOpen, setIsCloudModalOpen] = useState(false);
+  const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
   const [showToast, setShowToast] = useState(false);
   const [isVoiceSending, setIsVoiceSending] = useState(false);
 
@@ -261,12 +261,12 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({ addDream, isNightMode, s
                     Record Dream
                 </button>
                  <button
-                    onClick={() => setIsCloudModalOpen(true)}
+                    onClick={() => setIsUploadModalOpen(true)}
                     className={`w-full flex items-center justify-center gap-2 p-3 rounded-xl font-semibold transition-all duration-300 ${isNightMode ? 'bg-slate-700 hover:bg-slate-600' : 'bg-slate-600 hover:bg-slate-500'} text-white ${animationsEnabled ? 'active:scale-95' : ''}`}
                     disabled={isLoading}
                 >
                     <CloudUploadIcon className="w-5 h-5" />
-                    From URL
+                    Upload Dream
                 </button>
             </div>
             <form onSubmit={handleSubmit} className="flex items-center gap-2">
@@ -317,11 +317,11 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({ addDream, isNightMode, s
         }}
         isNightMode={isNightMode}
       />
-      <CloudUrlModal
-        isOpen={isCloudModalOpen}
-        onClose={() => setIsCloudModalOpen(false)}
+      <UploadDreamModal
+        isOpen={isUploadModalOpen}
+        onClose={() => setIsUploadModalOpen(false)}
         onSend={(dreamText, detectedMood) => {
-          setIsCloudModalOpen(false);
+          setIsUploadModalOpen(false);
           handleSendDream(dreamText, detectedMood);
         }}
         isNightMode={isNightMode}

@@ -1,10 +1,10 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Mood } from '../types';
 import { XIcon, LoadingIcon, AlertTriangleIcon, CloudUploadIcon, CheckCircleIcon, CircleIcon } from './Icons';
 import { transcribeAudio } from '../services/geminiService';
 import { analyzeAudioFileForEmotion } from '../services/voiceEmotionService';
 
-interface CloudUrlModalProps {
+interface UploadDreamModalProps {
   isOpen: boolean;
   onClose: () => void;
   onSend: (dreamText: string, detectedMood: Mood | null) => void;
@@ -13,28 +13,29 @@ interface CloudUrlModalProps {
 
 type StepStatus = 'pending' | 'loading' | 'done' | 'error';
 interface ProgressStep {
-    id: 'fetch' | 'analyze' | 'transcribe';
+    id: 'analyze' | 'transcribe';
     label: string;
     status: StepStatus;
 }
 
 const initialSteps: ProgressStep[] = [
-    { id: 'fetch', label: 'Fetching Audio File', status: 'pending' },
     { id: 'analyze', label: 'Analyzing Voice Emotion', status: 'pending' },
     { id: 'transcribe', label: 'Transcribing Dream', status: 'pending' },
 ];
 
-
-export const CloudUrlModal: React.FC<CloudUrlModalProps> = ({ isOpen, onClose, onSend, isNightMode }) => {
-  const [url, setUrl] = useState('');
+export const UploadDreamModal: React.FC<UploadDreamModalProps> = ({ isOpen, onClose, onSend, isNightMode }) => {
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [progressSteps, setProgressSteps] = useState<ProgressStep[]>(initialSteps);
   const [isProcessing, setIsProcessing] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
+  const [isDragging, setIsDragging] = useState(false);
+  
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (!isOpen) {
         setTimeout(() => {
-            setUrl('');
+            setSelectedFile(null);
             setProgressSteps(initialSteps);
             setErrorMessage('');
             setIsProcessing(false);
@@ -42,38 +43,25 @@ export const CloudUrlModal: React.FC<CloudUrlModalProps> = ({ isOpen, onClose, o
     }
   }, [isOpen]);
 
-  if (!isOpen) return null;
-
   const updateStepStatus = (id: ProgressStep['id'], status: StepStatus, newLabel?: string) => {
     setProgressSteps(prevSteps => prevSteps.map(step => 
         step.id === id ? { ...step, status, label: newLabel || step.label } : step
     ));
   };
-
-
-  const handleProcess = async () => {
-    if (!url.trim()) {
-        setErrorMessage("Please enter a valid URL.");
-        return;
-    };
+  
+  const processFile = useCallback(async (file: File) => {
+    if (!file) return;
 
     setIsProcessing(true);
     setErrorMessage('');
     setProgressSteps(initialSteps);
+    setSelectedFile(file);
 
     try {
-        // Step 1: Fetch
-        updateStepStatus('fetch', 'loading');
-        const response = await fetch(url);
-        if (!response.ok) throw new Error(`Could not fetch audio. Status: ${response.status}`);
-        const audioBlob = await response.blob();
-        updateStepStatus('fetch', 'done');
-        
-        // Step 2 & 3: Analyze and Transcribe in parallel
         updateStepStatus('analyze', 'loading');
         updateStepStatus('transcribe', 'loading');
 
-        const arrayBuffer = await audioBlob.arrayBuffer();
+        const arrayBuffer = await file.arrayBuffer();
         const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
         const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
         
@@ -86,13 +74,13 @@ export const CloudUrlModal: React.FC<CloudUrlModalProps> = ({ isOpen, onClose, o
             return null;
         });
 
-        const transcriptionPromise = transcribeAudio(audioBlob).then(transcript => {
+        const transcriptionPromise = transcribeAudio(file).then(transcript => {
             updateStepStatus('transcribe', 'done');
             return transcript;
         }).catch(err => {
             console.error("Transcription failed:", err);
             updateStepStatus('transcribe', 'error', 'Transcription Failed');
-            throw new Error("Transcription failed."); // Propagate error
+            throw new Error("Transcription failed.");
         });
         
         const [detectedMood, transcript] = await Promise.all([emotionPromise, transcriptionPromise]);
@@ -104,23 +92,59 @@ export const CloudUrlModal: React.FC<CloudUrlModalProps> = ({ isOpen, onClose, o
         }
 
     } catch (error: any) {
-        console.error("Error processing URL:", error);
+        console.error("Error processing file:", error);
         let message = "An unexpected error occurred. Please try again.";
-        if (error.message.includes('fetch') || error.message.includes('CORS')) {
-            message = "Could not fetch the audio. Please check the URL and ensure it's publicly accessible and allows cross-origin requests (CORS).";
-        } else if (error.message.includes('decode')) {
+        if (error.message.includes('decode')) {
             message = "Could not decode the audio file. The format might be unsupported.";
         } else if (error.message) {
             message = error.message;
         }
         setErrorMessage(message);
-        // Mark any remaining loading steps as errored
         setProgressSteps(prev => prev.map(s => s.status === 'loading' ? {...s, status: 'error'} : s));
     } finally {
         setIsProcessing(false);
     }
-  }
+  }, [onSend]);
+
+  const handleFileSelect = (files: FileList | null) => {
+    if (isProcessing) return;
+    if (files && files[0]) {
+        const file = files[0];
+        if (!file.type.startsWith('audio/')) {
+            setErrorMessage("Please select a valid audio file (e.g., mp3, wav, webm).");
+            return;
+        }
+        processFile(file);
+    }
+  };
+
+  const handleDragEvents = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+  };
+
+  const handleDragEnter = (e: React.DragEvent<HTMLDivElement>) => {
+    handleDragEvents(e);
+    if (e.dataTransfer.items && e.dataTransfer.items.length > 0) {
+      setIsDragging(true);
+    }
+  };
+
+  const handleDragLeave = (e: React.DragEvent<HTMLDivElement>) => {
+    handleDragEvents(e);
+    setIsDragging(false);
+  };
   
+  const handleDrop = (e: React.DragEvent<HTMLDivElement>) => {
+    handleDragEvents(e);
+    setIsDragging(false);
+    if (isProcessing) return;
+    if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+      handleFileSelect(e.dataTransfer.files);
+      e.dataTransfer.clearData();
+    }
+  };
+
   const StepIcon: React.FC<{ status: StepStatus }> = ({ status }) => {
     switch(status) {
         case 'loading': return <LoadingIcon className="w-5 h-5 text-purple-400" />;
@@ -131,6 +155,15 @@ export const CloudUrlModal: React.FC<CloudUrlModalProps> = ({ isOpen, onClose, o
             return <CircleIcon className="w-5 h-5 text-slate-500" />;
     }
   };
+  
+  const resetState = () => {
+    setSelectedFile(null);
+    setProgressSteps(initialSteps);
+    setErrorMessage('');
+    setIsProcessing(false);
+  }
+
+  if (!isOpen) return null;
 
   return (
     <div 
@@ -142,33 +175,44 @@ export const CloudUrlModal: React.FC<CloudUrlModalProps> = ({ isOpen, onClose, o
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex justify-between items-center mb-6">
-          <h2 className="text-2xl font-bold text-white">Process Dream from URL</h2>
+          <h2 className="text-2xl font-bold text-white">Upload Your Dream Audio</h2>
           <button onClick={onClose} className="p-1 rounded-full text-purple-300 hover:bg-slate-700 transition">
             <XIcon className="w-6 h-6" />
           </button>
         </div>
         
         <div className="space-y-4">
-            <div>
-                <label htmlFor="audio-url" className="font-semibold text-sm text-purple-300 mb-1 block">
-                    Audio File URL
-                </label>
-                <input
-                    id="audio-url"
-                    type="url"
-                    value={url}
-                    onChange={(e) => setUrl(e.target.value)}
-                    placeholder="https://.../mydream.mp3"
-                    className={`w-full p-3 rounded-xl focus:ring-2 focus:ring-purple-500 focus:outline-none transition placeholder:text-slate-400 duration-300 text-white ${isNightMode ? 'bg-slate-800' : 'bg-slate-700'}`}
-                    disabled={isProcessing}
-                />
-                 <p className="text-xs text-slate-400 mt-2">
-                    Provide a direct link to an audio file (e.g., mp3, wav, webm). The file must be publicly accessible (CORS enabled).
-                </p>
-            </div>
-            
-            {isProcessing && (
-                 <div className="p-3 bg-slate-800/50 rounded-lg space-y-2">
+            {!selectedFile ? (
+                <>
+                    <input
+                        type="file"
+                        ref={fileInputRef}
+                        onChange={(e) => handleFileSelect(e.target.files)}
+                        accept="audio/*"
+                        className="hidden"
+                    />
+                    <div
+                        onDragEnter={handleDragEnter}
+                        onDragLeave={handleDragLeave}
+                        onDragOver={handleDragEvents}
+                        onDrop={handleDrop}
+                        onClick={() => fileInputRef.current?.click()}
+                        className={`flex flex-col items-center justify-center p-8 border-2 border-dashed rounded-xl cursor-pointer transition-colors duration-300 ${
+                            isDragging 
+                            ? 'border-purple-400 bg-purple-500/10' 
+                            : isNightMode ? 'border-slate-600 hover:border-purple-500 hover:bg-slate-800' : 'border-slate-500 hover:border-purple-400 hover:bg-slate-700'
+                        }`}
+                    >
+                        <CloudUploadIcon className="w-12 h-12 text-purple-300 mb-2"/>
+                        <p className="font-semibold text-white">Drag & drop your audio file here</p>
+                        <p className="text-sm text-slate-400">or click to select a file</p>
+                    </div>
+                </>
+            ) : (
+                 <div className="p-4 bg-slate-800/50 rounded-lg space-y-3">
+                    <p className="text-sm font-medium text-white truncate">
+                        File: <span className="text-slate-300">{selectedFile.name}</span>
+                    </p>
                     {progressSteps.map(step => (
                         <div key={step.id} className="flex items-center gap-3">
                             <StepIcon status={step.status} />
@@ -195,14 +239,14 @@ export const CloudUrlModal: React.FC<CloudUrlModalProps> = ({ isOpen, onClose, o
           >
             Cancel
           </button>
-          <button 
-            onClick={handleProcess}
-            disabled={isProcessing || !url.trim()}
-            className="flex items-center gap-2 px-6 py-2 rounded-full text-sm font-semibold text-white bg-purple-600 hover:bg-purple-700 transition shadow-lg disabled:bg-slate-600 disabled:cursor-not-allowed"
-          >
-            {isProcessing ? <LoadingIcon className="w-5 h-5" /> : <CloudUploadIcon className="w-5 h-5" />}
-            Process Dream
-          </button>
+          {errorMessage && (
+              <button 
+                onClick={resetState}
+                className="px-6 py-2 rounded-full text-sm font-semibold text-white bg-purple-600 hover:bg-purple-700 transition shadow-lg"
+              >
+                Try Again
+              </button>
+          )}
         </div>
       </div>
        <style>{`
