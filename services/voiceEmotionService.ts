@@ -130,3 +130,54 @@ export const analyzeVoiceFeatures = (featuresHistory: any[]): Mood => {
 
     return winningMood;
 };
+
+
+let fileAudioContext: AudioContext | null = null;
+
+export const analyzeAudioFileForEmotion = (audioBuffer: AudioBuffer): Promise<Mood | null> => {
+    return new Promise((resolve, reject) => {
+        if (!window.Meyda) {
+            return reject(new Error("Meyda audio feature library not found."));
+        }
+
+        // Initialize AudioContext if it doesn't exist or is closed
+        if (!fileAudioContext || fileAudioContext.state === 'closed') {
+            try {
+                fileAudioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
+            } catch (e) {
+                return reject(new Error("AudioContext not supported by this browser."));
+            }
+        }
+        
+        const source = fileAudioContext.createBufferSource();
+        source.buffer = audioBuffer;
+
+        const features: any[] = [];
+
+        // Meyda analyzer needs to be connected to a source within the same context
+        const analyzer = window.Meyda.createMeydaAnalyzer({
+            audioContext: fileAudioContext,
+            source: source,
+            bufferSize: 512,
+            featureExtractors: ["rms", "spectralCentroid", "spectralFlatness", "mfcc", "spectralSlope", "spectralRolloff"],
+            callback: (f: any) => {
+                features.push(f);
+            },
+        });
+
+        source.onended = () => {
+            analyzer.stop();
+            if (features.length > 20) {
+                const mood = analyzeVoiceFeatures(features);
+                resolve(mood);
+            } else {
+                resolve(null); // Not enough data
+            }
+        };
+
+        // We don't want to hear the audio, so we don't connect it to destination.
+        // Meyda hooks into the source directly as it 'plays' through the context.
+        analyzer.start();
+        source.start();
+    });
+};

@@ -13,14 +13,15 @@ interface RecordDreamModalProps {
   isNightMode: boolean;
 }
 
+type Status = 'idle' | 'recording' | 'processing' | 'finished';
+
 export const RecordDreamModal: React.FC<RecordDreamModalProps> = ({ isOpen, onClose, onSend, isNightMode }) => {
   const [editableTranscript, setEditableTranscript] = useState('');
   const [detectedVoiceMood, setDetectedVoiceMood] = useState<Mood | null>(null);
-  const [hasRecorded, setHasRecorded] = useState(false);
-  const [isTranscribing, setIsTranscribing] = useState(false);
+  const [status, setStatus] = useState<Status>('idle');
   
   const { isRecording, startRecording, stopRecording } = useAudioRecorder();
-  const { isAnalyzing, realtimeMood, startEmotionAnalysis, stopEmotionAnalysis } = useVoiceEmotion();
+  const { realtimeMood, startEmotionAnalysis, stopEmotionAnalysis } = useVoiceEmotion();
 
   // Reset state when modal opens/closes
   useEffect(() => {
@@ -28,9 +29,10 @@ export const RecordDreamModal: React.FC<RecordDreamModalProps> = ({ isOpen, onCl
         setTimeout(() => {
             setEditableTranscript('');
             setDetectedVoiceMood(null);
-            setHasRecorded(false);
-            setIsTranscribing(false);
+            setStatus('idle');
         }, 300); // Wait for closing animation
+    } else {
+        setStatus('idle');
     }
   }, [isOpen]);
 
@@ -38,13 +40,12 @@ export const RecordDreamModal: React.FC<RecordDreamModalProps> = ({ isOpen, onCl
 
   const handleMicClick = async () => {
     if (isRecording) {
+      setStatus('processing');
       const audioBlob = await stopRecording();
       const mood = await stopEmotionAnalysis();
       setDetectedVoiceMood(mood);
-      setHasRecorded(true);
-
+      
       if (audioBlob) {
-        setIsTranscribing(true);
         try {
           const transcript = await transcribeAudio(audioBlob);
           setEditableTranscript(transcript);
@@ -52,14 +53,16 @@ export const RecordDreamModal: React.FC<RecordDreamModalProps> = ({ isOpen, onCl
             console.error(error);
             setEditableTranscript("Sorry, I couldn't transcribe that. Please try again or type your dream manually.");
         } finally {
-            setIsTranscribing(false);
+            setStatus('finished');
         }
+      } else {
+        setStatus('idle'); // No audio recorded
       }
 
     } else {
       setEditableTranscript('');
       setDetectedVoiceMood(null);
-      setHasRecorded(false);
+      setStatus('recording');
       startRecording();
       startEmotionAnalysis();
     }
@@ -82,8 +85,25 @@ export const RecordDreamModal: React.FC<RecordDreamModalProps> = ({ isOpen, onCl
   const detectedMoodStyles = detectedVoiceMood ? MOOD_OPTIONS.find(m => m.mood === detectedVoiceMood) : null;
   const realtimeMoodStyles = realtimeMood ? MOOD_OPTIONS.find(m => m.mood === realtimeMood) : null;
 
-  const micButtonBgColor = isRecording ? 'bg-red-500 shadow-red-500/50 animate-pulse-deep' : 'bg-purple-600 shadow-purple-500/50';
+  const getMicButtonClasses = () => {
+    const baseClasses = 'relative w-32 h-32 rounded-full flex items-center justify-center transition-all duration-300 disabled:bg-slate-500';
 
+    if (status === 'recording') {
+        if (realtimeMoodStyles) {
+            const color = isNightMode ? realtimeMoodStyles.colorNight.split(' ')[0] : realtimeMoodStyles.color.split(' ')[0];
+            return `${baseClasses} ${color} animate-pulse-gentle`;
+        }
+        return `${baseClasses} bg-red-500 shadow-red-500/50 animate-pulse-deep`;
+    }
+    return `${baseClasses} bg-purple-600 shadow-purple-500/50`;
+  };
+
+  const statusText: Record<Status, string> = {
+    idle: 'Tap to start recording',
+    recording: realtimeMood ? `Sensing: ${realtimeMood}` : 'Listening...',
+    processing: 'Processing your voice...',
+    finished: 'Tap to re-record'
+  }
 
   return (
     <div 
@@ -102,26 +122,36 @@ export const RecordDreamModal: React.FC<RecordDreamModalProps> = ({ isOpen, onCl
         </div>
         
         <div className="flex flex-col items-center justify-center flex-grow">
-            <div className={`w-48 h-48 rounded-full flex items-center justify-center transition-all duration-500 ${isRecording && realtimeMoodStyles ? (isNightMode ? realtimeMoodStyles.colorNight.replace('hover:', '') : realtimeMoodStyles.color.replace('hover:', '')) : 'bg-transparent'}`}>
+            <div className="w-48 h-48 rounded-full flex items-center justify-center">
                 <button 
                     onClick={handleMicClick}
-                    disabled={isTranscribing}
-                    className={`relative w-32 h-32 rounded-full flex items-center justify-center transition-all duration-300 disabled:bg-slate-500 ${micButtonBgColor}`}
+                    disabled={status === 'processing'}
+                    className={getMicButtonClasses()}
                 >
-                    <MicIcon className="w-16 h-16 text-white"/>
-                    {isRecording && !realtimeMood && <WaveformIcon className="absolute inset-0 w-full h-full text-white/50 animate-spin-slow" />}
-                    {isRecording && realtimeMoodStyles && (
-                        <span className="absolute text-5xl transition-transform duration-300 transform scale-125">{realtimeMoodStyles.emoji}</span>
+                   {status === 'recording' && realtimeMoodStyles ? (
+                        <span className="text-6xl animate-emoji-pop-in">{realtimeMoodStyles.emoji}</span>
+                    ) : (
+                        <>
+                            <MicIcon className="w-16 h-16 text-white"/>
+                            {status === 'recording' && <WaveformIcon className="absolute inset-0 w-full h-full text-white/50 animate-spin-slow" />}
+                        </>
                     )}
                 </button>
             </div>
             <p className="mt-4 font-semibold text-purple-200 h-6">
-                {isRecording ? (realtimeMood ? `Sensing: ${realtimeMood}`: 'Listening...') : isTranscribing ? 'Transcribing...' : (hasRecorded ? 'Tap to re-record' : 'Tap to start recording')}
+                {statusText[status]}
             </p>
         </div>
 
-        { (hasRecorded || editableTranscript || isTranscribing) && (
-            <div className="mt-6 space-y-4 animate-fade-in">
+        { (status === 'finished' || editableTranscript || status === 'processing') && (
+            <div className="mt-6 space-y-4 animate-fade-in relative">
+                {status === 'processing' && (
+                  <div className="absolute inset-0 z-10 flex flex-col items-center justify-center bg-slate-900/80 rounded-lg">
+                    <LoadingIcon className="w-8 h-8 text-white" />
+                    <p className="mt-2 text-white/80 font-medium">Echo is processing your voice...</p>
+                  </div>
+                )}
+
                  {detectedMoodStyles && (
                     <div className="flex flex-col items-center">
                         <h4 className="font-semibold text-sm text-purple-300 mb-2 flex items-center gap-1.5">
@@ -144,13 +174,8 @@ export const RecordDreamModal: React.FC<RecordDreamModalProps> = ({ isOpen, onCl
                             placeholder="Your transcribed dream will appear here..."
                             className={`w-full p-3 rounded-xl resize-y focus:ring-2 focus:ring-purple-500 focus:outline-none transition placeholder:text-slate-400 duration-300 ${isNightMode ? 'bg-slate-800/80' : 'bg-slate-700/80'}`}
                             rows={4}
-                            disabled={isTranscribing}
+                            disabled={status === 'processing'}
                         />
-                         {isTranscribing && (
-                            <div className="absolute inset-0 flex items-center justify-center bg-slate-800/50 rounded-xl">
-                                <LoadingIcon className="w-6 h-6 text-white" />
-                            </div>
-                        )}
                     </div>
                 </div>
             </div>
@@ -165,7 +190,7 @@ export const RecordDreamModal: React.FC<RecordDreamModalProps> = ({ isOpen, onCl
           </button>
           <button 
             onClick={handleSend}
-            disabled={!editableTranscript.trim() || isTranscribing || isRecording}
+            disabled={!editableTranscript.trim() || status !== 'finished'}
             className="flex items-center gap-2 px-6 py-2 rounded-full text-sm font-semibold text-white bg-purple-600 hover:bg-purple-700 transition shadow-lg disabled:bg-slate-600 disabled:cursor-not-allowed"
             >
             Send Dream <PaperPlaneIcon className="w-4 h-4" />
@@ -199,6 +224,25 @@ export const RecordDreamModal: React.FC<RecordDreamModalProps> = ({ isOpen, onCl
         }
         .animate-pulse-deep {
             animation: pulse-deep 2s infinite;
+        }
+        @keyframes emoji-pop-in {
+            0% { transform: scale(0.5); opacity: 0; }
+            70% { transform: scale(1.1); opacity: 1; }
+            100% { transform: scale(1); opacity: 1; }
+        }
+        .animate-emoji-pop-in {
+            animation: emoji-pop-in 0.4s ease-out;
+        }
+        @keyframes pulse-gentle {
+            0%, 100% {
+                transform: scale(1);
+            }
+            50% {
+                transform: scale(1.03);
+            }
+        }
+        .animate-pulse-gentle {
+            animation: pulse-gentle 2.2s infinite ease-in-out;
         }
       `}</style>
     </div>

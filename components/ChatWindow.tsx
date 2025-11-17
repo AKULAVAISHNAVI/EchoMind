@@ -1,9 +1,11 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { ChatMessage, Dream, Sender, Mood, CustomizationSettings } from '../types';
 import { analyzeDream } from '../services/geminiService';
-import { PaperPlaneIcon, UserIcon, LoadingIcon, EchoAvatarIcon, MicIcon, CheckCircleIcon } from './Icons';
+import { PaperPlaneIcon, UserIcon, EchoAvatarIcon, MicIcon, CheckCircleIcon, CloudUploadIcon } from './Icons';
 import { MOOD_OPTIONS, ECHO_PERSONALITIES, APP_THEMES } from '../constants';
 import { RecordDreamModal } from './RecordDreamModal';
+import { CloudUrlModal } from './CloudUrlModal';
+import { useVoiceEmotion } from '../hooks/useVoiceEmotion';
 
 interface ChatWindowProps {
   addDream: (dream: Dream) => void;
@@ -75,9 +77,13 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({ addDream, isNightMode, s
   const [isLoading, setIsLoading] = useState(false);
   const [pendingDream, setPendingDream] = useState<Omit<Dream, 'mood'> | null>(null);
   const [isRecordModalOpen, setIsRecordModalOpen] = useState(false);
+  const [isCloudModalOpen, setIsCloudModalOpen] = useState(false);
   const [showToast, setShowToast] = useState(false);
+  const [isVoiceSending, setIsVoiceSending] = useState(false);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  
+  const { realtimeMood, startEmotionAnalysis, stopEmotionAnalysis } = useVoiceEmotion();
   
   const recentMoodHistory = useMemo(() => {
     const sevenDaysAgo = new Date();
@@ -105,7 +111,9 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({ addDream, isNightMode, s
 
     try {
       const systemInstruction = ECHO_PERSONALITIES[settings.personality].instruction;
-      const response = await analyzeDream(updatedMessages, systemInstruction, detectedEmotion, recentMoodHistory);
+      // Filter out the initial system message before sending to the API
+      const historyForAI = updatedMessages.filter(msg => msg.id !== 'initial');
+      const response = await analyzeDream(historyForAI, systemInstruction, detectedEmotion, recentMoodHistory);
       
       const analysisCompleteMarker = "DREAM_ANALYSIS_COMPLETE";
       const cleanedResponse = response.replace(analysisCompleteMarker, '').trim();
@@ -178,6 +186,40 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({ addDream, isNightMode, s
     };
     setMessages(prev => [...prev, confirmationMessage]);
   };
+  
+  const handleVoiceSendStart = (e: React.MouseEvent | React.TouchEvent) => {
+    e.preventDefault();
+    if (isLoading || !input.trim()) return;
+    setIsVoiceSending(true);
+    startEmotionAnalysis();
+  };
+
+  const handleVoiceSendEnd = async (e: React.MouseEvent | React.TouchEvent) => {
+    e.preventDefault();
+    if (!isVoiceSending) return;
+    
+    setIsVoiceSending(false);
+    const mood = await stopEmotionAnalysis();
+    
+    if (input.trim()) {
+      handleSendDream(input, mood);
+      setInput('');
+    }
+  };
+
+  const handleVoiceSendCancel = (e: React.MouseEvent) => {
+    e.preventDefault();
+    if (isVoiceSending) {
+        setIsVoiceSending(false);
+        stopEmotionAnalysis(); // Stop analysis without sending
+    }
+  };
+  
+  const realtimeMoodStyles = realtimeMood ? MOOD_OPTIONS.find(m => m.mood === realtimeMood) : null;
+  const voiceSendButtonBg = isVoiceSending 
+    ? (realtimeMoodStyles ? (isNightMode ? realtimeMoodStyles.colorNight.split(' ')[0] : realtimeMoodStyles.color.split(' ')[0]) : 'bg-red-500')
+    : themeStyles.userBubbleBg;
+
 
   return (
     <div className="flex flex-col h-full max-h-[70vh] sm:max-h-full relative">
@@ -190,12 +232,16 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({ addDream, isNightMode, s
       <div className="flex-grow space-y-4 overflow-y-auto pr-2">
         {messages.map(msg => <ChatBubble key={msg.id} message={msg} isNightMode={isNightMode} settings={settings} themeStyles={themeStyles} animationsEnabled={animationsEnabled} />)}
         {isLoading && (
-          <div className="flex items-start gap-3 justify-start">
-            <div className={`flex-shrink-0 w-8 h-8 rounded-full ${isNightMode ? themeStyles.aiBubbleBgNight : themeStyles.aiBubbleBgDay} flex items-center justify-center`}>
-                <LoadingIcon className="w-5 h-5 text-white" />
+          <div className={`flex items-start gap-3 justify-start ${animationsEnabled ? 'animate-bubble-in' : ''}`}>
+            <div className={`flex-shrink-0 w-8 h-8 rounded-full ${isNightMode ? themeStyles.aiBubbleBgNight : themeStyles.aiBubbleBgDay} flex items-center justify-center ${animationsEnabled ? 'animate-avatar-pulse' : ''}`}>
+                <EchoAvatarIcon avatar={settings.avatar} className="w-5 h-5 text-white" />
             </div>
             <div className={`max-w-md md:max-w-lg px-4 py-3 rounded-2xl rounded-bl-lg transition-colors duration-300 ${isNightMode ? themeStyles.aiBubbleBgNight : themeStyles.aiBubbleBgDay}`}>
-              <p className={`text-sm text-white/80 ${animationsEnabled ? 'animate-pulse' : ''}`}>Echo is listening...</p>
+              <div className="typing-indicator text-white/80">
+                  <span></span>
+                  <span></span>
+                  <span></span>
+              </div>
             </div>
           </div>
         )}
@@ -205,14 +251,24 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({ addDream, isNightMode, s
         <MoodSelector onSelectMood={handleMoodSelect} isNightMode={isNightMode} animationsEnabled={animationsEnabled} />
       ) : (
         <div className="flex-shrink-0 mt-4 flex flex-col gap-2">
-            <button
-                onClick={() => setIsRecordModalOpen(true)}
-                className={`w-full flex items-center justify-center gap-2 p-3 rounded-xl font-semibold transition-all duration-300 ${themeStyles.userBubbleBg} hover:opacity-90 text-white ${animationsEnabled ? 'active:scale-95' : ''}`}
-                disabled={isLoading}
-            >
-                <MicIcon className="w-5 h-5" />
-                Record a Dream
-            </button>
+            <div className="flex items-center gap-2">
+                <button
+                    onClick={() => setIsRecordModalOpen(true)}
+                    className={`w-full flex items-center justify-center gap-2 p-3 rounded-xl font-semibold transition-all duration-300 ${themeStyles.userBubbleBg} hover:opacity-90 text-white ${animationsEnabled ? 'active:scale-95' : ''}`}
+                    disabled={isLoading}
+                >
+                    <MicIcon className="w-5 h-5" />
+                    Record Dream
+                </button>
+                 <button
+                    onClick={() => setIsCloudModalOpen(true)}
+                    className={`w-full flex items-center justify-center gap-2 p-3 rounded-xl font-semibold transition-all duration-300 ${isNightMode ? 'bg-slate-700 hover:bg-slate-600' : 'bg-slate-600 hover:bg-slate-500'} text-white ${animationsEnabled ? 'active:scale-95' : ''}`}
+                    disabled={isLoading}
+                >
+                    <CloudUploadIcon className="w-5 h-5" />
+                    From URL
+                </button>
+            </div>
             <form onSubmit={handleSubmit} className="flex items-center gap-2">
                 <textarea
                     value={input}
@@ -228,6 +284,19 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({ addDream, isNightMode, s
                     rows={1}
                     disabled={isLoading}
                 />
+                <button
+                    type="button"
+                    onMouseDown={handleVoiceSendStart}
+                    onMouseUp={handleVoiceSendEnd}
+                    onMouseLeave={handleVoiceSendCancel}
+                    onTouchStart={handleVoiceSendStart}
+                    onTouchEnd={handleVoiceSendEnd}
+                    className={`p-3 rounded-full transition-all disabled:cursor-not-allowed disabled:opacity-50 ${voiceSendButtonBg} ${isVoiceSending ? 'scale-110 animate-pulse' : `hover:opacity-90 ${animationsEnabled ? 'active:scale-95' : ''}`}`}
+                    disabled={isLoading || !input.trim()}
+                    aria-label="Hold to send with voice emotion"
+                >
+                    <MicIcon className="w-6 h-6 text-white" />
+                </button>
                 <button
                     type="submit"
                     className={`p-3 rounded-full transition-all disabled:cursor-not-allowed ${themeStyles.userBubbleBg} hover:opacity-90 disabled:opacity-50 ${animationsEnabled ? 'active:scale-95' : ''}`}
@@ -248,7 +317,15 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({ addDream, isNightMode, s
         }}
         isNightMode={isNightMode}
       />
-       {/* FIX: Encapsulated CSS rules in a template literal to prevent parsing as TypeScript. */}
+      <CloudUrlModal
+        isOpen={isCloudModalOpen}
+        onClose={() => setIsCloudModalOpen(false)}
+        onSend={(dreamText, detectedMood) => {
+          setIsCloudModalOpen(false);
+          handleSendDream(dreamText, detectedMood);
+        }}
+        isNightMode={isNightMode}
+      />
        {animationsEnabled && <style>{`
         @keyframes fade-in {
           from { opacity: 0; transform: translateY(-10px); }
@@ -273,12 +350,47 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({ addDream, isNightMode, s
         .animate-idle-bob {
             animation: idle-bob 2.5s ease-in-out infinite;
         }
+        
+        /* IMPROVED: Bubble animation for smoother entry */
         @keyframes bubble-in {
-            from { opacity: 0; transform: translateY(10px) scale(0.95); }
+            from { opacity: 0; transform: translateY(10px) scale(0.98); }
             to { opacity: 1; transform: translateY(0) scale(1); }
         }
         .animate-bubble-in {
-            animation: bubble-in 0.4s ease-out;
+            animation: bubble-in 0.4s ease-out forwards;
+        }
+
+        /* IMPROVED: Avatar pulse for a more subtle loading indicator */
+        @keyframes avatar-pulse {
+            0%, 100% { transform: scale(1); }
+            50% { transform: scale(1.08); }
+        }
+        .animate-avatar-pulse {
+            animation: avatar-pulse 1.8s infinite ease-in-out;
+        }
+        
+        /* IMPROVED: Typing indicator with a fade effect instead of bounce */
+        .typing-indicator {
+            display: flex;
+            align-items: center;
+            height: 100%;
+            padding: 3px 0;
+        }
+        .typing-indicator span {
+            height: 8px;
+            width: 8px;
+            background-color: currentColor;
+            border-radius: 50%;
+            display: inline-block;
+            margin: 0 2px; /* Increased spacing slightly */
+            animation: typing-fade 1.5s infinite ease-in-out both;
+        }
+        .typing-indicator span:nth-of-type(1) { animation-delay: 0s; }
+        .typing-indicator span:nth-of-type(2) { animation-delay: 0.25s; }
+        .typing-indicator span:nth-of-type(3) { animation-delay: 0.5s; }
+        @keyframes typing-fade {
+            0%, 100% { opacity: 0.3; }
+            50% { opacity: 1; }
         }
       `}</style>}
     </div>
