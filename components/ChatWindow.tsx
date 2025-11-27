@@ -220,6 +220,8 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({ addDream, isNightMode, s
     ? (realtimeMoodStyles ? (isNightMode ? realtimeMoodStyles.colorNight.split(' ')[0] : realtimeMoodStyles.color.split(' ')[0]) : 'bg-red-500')
     : themeStyles.userBubbleBg;
 
+  // Determine button text based on chat state
+  const isConversationStarted = messages.length > 2;
 
   return (
     <div className="flex flex-col h-full max-h-[70vh] sm:max-h-full relative">
@@ -258,7 +260,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({ addDream, isNightMode, s
                     disabled={isLoading}
                 >
                     <MicIcon className="w-5 h-5" />
-                    Record Dream
+                    {isConversationStarted ? "Record Reply" : "Record Dream"}
                 </button>
             </div>
             <form onSubmit={handleSubmit} className="flex items-center gap-2">
@@ -271,7 +273,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({ addDream, isNightMode, s
                         handleSubmit(e);
                     }
                     }}
-                    placeholder="... or type your dream here"
+                    placeholder={isConversationStarted ? "Reply to Echo..." : "... or type your dream here"}
                     className={`flex-grow w-full p-3 rounded-xl resize-none focus:ring-2 focus:outline-none transition placeholder:text-white/60 duration-300 text-white ${isNightMode ? 'bg-black/30 focus:ring-white/50' : 'bg-black/20 focus:ring-white/50'}`}
                     rows={1}
                     disabled={isLoading}

@@ -18,8 +18,6 @@ export const useAudioRecorder = () => {
       setIsRecording(true);
       audioChunksRef.current = [];
       
-      // OPTIMIZATION: We rely on the browser's default settings for maximum compatibility.
-      // Setting specific bitrates can cause failures on Safari/iOS.
       const mimeTypes = [
           'audio/webm;codecs=opus',
           'audio/webm',
@@ -35,7 +33,11 @@ export const useAudioRecorder = () => {
           }
       }
 
-      const options: MediaRecorderOptions = {};
+      // OPTIMIZATION: Set bitrate to 64kbps (64000 bits/sec) to reduce file size
+      // while maintaining good enough quality for speech recognition.
+      const options: MediaRecorderOptions = {
+          audioBitsPerSecond: 64000 
+      };
       
       if (selectedMimeType) {
           options.mimeType = selectedMimeType;

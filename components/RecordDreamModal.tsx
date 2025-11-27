@@ -1,4 +1,5 @@
-import React, { useState, useEffect } from 'react';
+
+import React, { useState, useEffect, useRef } from 'react';
 import { Mood } from '../types';
 import { useAudioRecorder } from '../hooks/useAudioRecorder';
 import { useVoiceEmotion } from '../hooks/useVoiceEmotion';
@@ -22,6 +23,9 @@ export const RecordDreamModal: React.FC<RecordDreamModalProps> = ({ isOpen, onCl
   
   const { isRecording, startRecording, stopRecording } = useAudioRecorder();
   const { realtimeMood, startEmotionAnalysis, stopEmotionAnalysis } = useVoiceEmotion();
+  
+  // Ref to track if the component is mounted or if processing was cancelled
+  const isProcessingRef = useRef(false);
 
   // Reset state when modal opens/closes
   useEffect(() => {
@@ -30,9 +34,11 @@ export const RecordDreamModal: React.FC<RecordDreamModalProps> = ({ isOpen, onCl
             setEditableTranscript('');
             setDetectedVoiceMood(null);
             setStatus('idle');
+            isProcessingRef.current = false;
         }, 300); // Wait for closing animation
     } else {
         setStatus('idle');
+        isProcessingRef.current = false;
     }
   }, [isOpen]);
 
@@ -41,6 +47,8 @@ export const RecordDreamModal: React.FC<RecordDreamModalProps> = ({ isOpen, onCl
   const handleMicClick = async () => {
     if (isRecording) {
       setStatus('processing');
+      isProcessingRef.current = true;
+
       const audioBlob = await stopRecording();
       const mood = await stopEmotionAnalysis();
       setDetectedVoiceMood(mood);
@@ -48,12 +56,19 @@ export const RecordDreamModal: React.FC<RecordDreamModalProps> = ({ isOpen, onCl
       if (audioBlob) {
         try {
           const transcript = await transcribeAudio(audioBlob);
-          setEditableTranscript(transcript);
+          // Only update if we are still processing (user hasn't cancelled)
+          if (isProcessingRef.current) {
+             setEditableTranscript(transcript);
+             setStatus('finished');
+          }
         } catch (error) {
             console.error(error);
-            setEditableTranscript("Sorry, I couldn't transcribe that. Please try again or type your dream manually.");
+            if (isProcessingRef.current) {
+                setEditableTranscript("Sorry, I couldn't transcribe that. Please try again or type your dream manually.");
+                setStatus('finished');
+            }
         } finally {
-            setStatus('finished');
+            isProcessingRef.current = false;
         }
       } else {
         setStatus('idle'); // No audio recorded
@@ -68,6 +83,12 @@ export const RecordDreamModal: React.FC<RecordDreamModalProps> = ({ isOpen, onCl
     }
   };
   
+  const handleCancelProcessing = () => {
+      isProcessingRef.current = false;
+      setStatus('finished');
+      setEditableTranscript(''); // Allow user to type manually
+  };
+  
   const handleSend = () => {
     if (editableTranscript.trim()) {
         onSend(editableTranscript.trim(), detectedVoiceMood);
@@ -79,6 +100,7 @@ export const RecordDreamModal: React.FC<RecordDreamModalProps> = ({ isOpen, onCl
         stopRecording();
         stopEmotionAnalysis();
     }
+    isProcessingRef.current = false;
     onClose();
   }
   
@@ -115,7 +137,7 @@ export const RecordDreamModal: React.FC<RecordDreamModalProps> = ({ isOpen, onCl
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex justify-between items-center mb-6">
-          <h2 className="text-2xl font-bold text-white">Record Your Dream</h2>
+          <h2 className="text-2xl font-bold text-white">Record Your Message</h2>
           <button onClick={handleClose} className="p-1 rounded-full text-purple-300 hover:bg-slate-700 transition">
             <XIcon className="w-6 h-6" />
           </button>
@@ -146,9 +168,15 @@ export const RecordDreamModal: React.FC<RecordDreamModalProps> = ({ isOpen, onCl
         { (status === 'finished' || editableTranscript || status === 'processing') && (
             <div className="mt-6 space-y-4 animate-fade-in relative">
                 {status === 'processing' && (
-                  <div className="absolute inset-0 z-10 flex flex-col items-center justify-center bg-slate-900/80 rounded-lg">
-                    <LoadingIcon className="w-8 h-8 text-white" />
-                    <p className="mt-2 text-white/80 font-medium">Echo is processing your voice...</p>
+                  <div className="absolute inset-0 z-10 flex flex-col items-center justify-center bg-slate-900/90 rounded-lg text-center p-4">
+                    <LoadingIcon className="w-8 h-8 text-white mb-2" />
+                    <p className="text-white/90 font-medium">Echo is processing your voice...</p>
+                    <button 
+                        onClick={handleCancelProcessing}
+                        className="mt-3 text-sm text-red-300 hover:text-red-200 underline font-medium"
+                    >
+                        Taking too long? Cancel & Type
+                    </button>
                   </div>
                 )}
 
@@ -165,13 +193,13 @@ export const RecordDreamModal: React.FC<RecordDreamModalProps> = ({ isOpen, onCl
                     </div>
                 )}
                 <div>
-                    <label htmlFor="transcript" className="font-semibold text-sm text-purple-300 mb-1 block mt-4">Your dream transcript (edit if needed):</label>
+                    <label htmlFor="transcript" className="font-semibold text-sm text-purple-300 mb-1 block mt-4">Your transcript (edit if needed):</label>
                     <div className="relative">
                         <textarea
                             id="transcript"
                             value={editableTranscript}
                             onChange={(e) => setEditableTranscript(e.target.value)}
-                            placeholder="Your transcribed dream will appear here..."
+                            placeholder="Your transcribed text will appear here..."
                             className={`w-full p-3 rounded-xl resize-y focus:ring-2 focus:ring-purple-500 focus:outline-none transition placeholder:text-slate-400 duration-300 ${isNightMode ? 'bg-slate-800/80' : 'bg-slate-700/80'}`}
                             rows={4}
                             disabled={status === 'processing'}
@@ -190,10 +218,10 @@ export const RecordDreamModal: React.FC<RecordDreamModalProps> = ({ isOpen, onCl
           </button>
           <button 
             onClick={handleSend}
-            disabled={!editableTranscript.trim() || status !== 'finished'}
+            disabled={!editableTranscript.trim() || status === 'processing'}
             className="flex items-center gap-2 px-6 py-2 rounded-full text-sm font-semibold text-white bg-purple-600 hover:bg-purple-700 transition shadow-lg disabled:bg-slate-600 disabled:cursor-not-allowed"
             >
-            Send Dream <PaperPlaneIcon className="w-4 h-4" />
+            Send <PaperPlaneIcon className="w-4 h-4" />
           </button>
         </div>
       </div>
