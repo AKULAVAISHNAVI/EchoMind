@@ -133,7 +133,7 @@ export const RecordDreamModal: React.FC<RecordDreamModalProps> = ({ isOpen, onCl
         onClick={handleClose}
     >
       <div 
-        className={`w-full max-w-lg p-6 rounded-2xl shadow-2xl border flex flex-col transition-colors duration-500 ${isNightMode ? 'bg-slate-900 border-purple-800/40' : 'bg-slate-800 border-purple-500/20'}`}
+        className={`w-full max-w-lg max-h-[90vh] overflow-y-auto p-6 rounded-2xl shadow-2xl border flex flex-col transition-colors duration-500 ${isNightMode ? 'bg-slate-900 border-purple-800/40' : 'bg-slate-800 border-purple-500/20'}`}
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex justify-between items-center mb-6">
