@@ -28,9 +28,6 @@ export default async function handler(req, res) {
               { text: 'Transcribe this audio recording of a person describing their dream. Only provide the transcript text, with no extra commentary.' },
           ]
       },
-      config: {
-          thinkingConfig: { thinkingBudget: 0 } // Disable thinking for maximum speed
-      }
     });
     
     res.status(200).json({ transcript: response.text });

@@ -18,8 +18,8 @@ export const useAudioRecorder = () => {
       setIsRecording(true);
       audioChunksRef.current = [];
       
-      // OPTIMIZATION: Check for supported MIME types and set a lower bitrate.
-      // 32kbps is sufficient for speech recognition and drastically reduces upload size/time.
+      // OPTIMIZATION: We rely on the browser's default settings for maximum compatibility.
+      // Setting specific bitrates can cause failures on Safari/iOS.
       const mimeTypes = [
           'audio/webm;codecs=opus',
           'audio/webm',
@@ -35,9 +35,7 @@ export const useAudioRecorder = () => {
           }
       }
 
-      const options: MediaRecorderOptions = {
-          audioBitsPerSecond: 32000, // Reduced from default (often 128k+) to 32k to speed up upload/processing
-      };
+      const options: MediaRecorderOptions = {};
       
       if (selectedMimeType) {
           options.mimeType = selectedMimeType;

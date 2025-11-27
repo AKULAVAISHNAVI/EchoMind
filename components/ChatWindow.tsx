@@ -1,3 +1,4 @@
+
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { ChatMessage, Dream, Sender, Mood, CustomizationSettings } from '../types';
 import { analyzeDream } from '../services/geminiService';
@@ -109,8 +110,9 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({ addDream, isNightMode, s
 
     try {
       const systemInstruction = ECHO_PERSONALITIES[settings.personality].instruction;
-      // Filter out the initial system message before sending to the API
-      const historyForAI = updatedMessages.filter(msg => msg.id !== 'initial');
+      // Filter out system messages (including initial greeting and confirmations) to keep clean User/Model history
+      const historyForAI = updatedMessages.filter(msg => msg.sender !== Sender.System);
+      
       const response = await analyzeDream(historyForAI, systemInstruction, detectedEmotion, recentMoodHistory);
       
       const analysisCompleteMarker = "DREAM_ANALYSIS_COMPLETE";

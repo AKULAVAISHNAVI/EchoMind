@@ -56,7 +56,6 @@ export default async function handler(req, res) {
         contents: contents,
         config: {
             systemInstruction: systemInstruction,
-            thinkingConfig: { thinkingBudget: 0 } // Disable thinking for maximum speed
         },
         // Add safety settings, which is a good practice for a public-facing application.
         safetySettings: [
