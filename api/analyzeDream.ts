@@ -50,11 +50,13 @@ export default async function handler(req, res) {
     }
 
     // Call the Gemini API with the formatted content and configuration.
+    // OPTIMIZATION: Switched to gemini-2.5-flash for faster response times.
     const response = await ai.models.generateContent({
-        model: 'gemini-2.5-pro',
+        model: 'gemini-2.5-flash',
         contents: contents,
         config: {
             systemInstruction: systemInstruction,
+            thinkingConfig: { thinkingBudget: 0 } // Disable thinking for maximum speed
         },
         // Add safety settings, which is a good practice for a public-facing application.
         safetySettings: [

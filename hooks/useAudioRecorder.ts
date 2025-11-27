@@ -1,3 +1,4 @@
+
 import { useState, useRef } from 'react';
 
 export const useAudioRecorder = () => {
@@ -8,7 +9,6 @@ export const useAudioRecorder = () => {
   const startRecording = async () => {
     if (isRecording) return;
     try {
-      // FIX: Check for mediaDevices support.
       if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
         console.error("Media Devices API not supported.");
         alert("Your browser does not support audio recording.");
@@ -18,7 +18,31 @@ export const useAudioRecorder = () => {
       setIsRecording(true);
       audioChunksRef.current = [];
       
-      const options = { mimeType: 'audio/webm' };
+      // OPTIMIZATION: Check for supported MIME types and set a lower bitrate.
+      // 32kbps is sufficient for speech recognition and drastically reduces upload size/time.
+      const mimeTypes = [
+          'audio/webm;codecs=opus',
+          'audio/webm',
+          'audio/mp4', // Safari support
+          'audio/ogg;codecs=opus'
+      ];
+      
+      let selectedMimeType = '';
+      for (const type of mimeTypes) {
+          if (MediaRecorder.isTypeSupported(type)) {
+              selectedMimeType = type;
+              break;
+          }
+      }
+
+      const options: MediaRecorderOptions = {
+          audioBitsPerSecond: 32000, // Reduced from default (often 128k+) to 32k to speed up upload/processing
+      };
+      
+      if (selectedMimeType) {
+          options.mimeType = selectedMimeType;
+      }
+
       const mediaRecorder = new MediaRecorder(stream, options);
       mediaRecorderRef.current = mediaRecorder;
 
@@ -28,11 +52,10 @@ export const useAudioRecorder = () => {
         }
       };
       
-      mediaRecorder.start();
+      mediaRecorder.start(1000); // Slice into 1-second chunks to ensure data availability
 
     } catch (err) {
       console.error("Error starting audio recording:", err);
-      // Handle permission denied error
       if (err instanceof DOMException && err.name === "NotAllowedError") {
           alert("Microphone permission denied. Please allow microphone access in your browser settings to record your dream.");
       }
@@ -48,7 +71,10 @@ export const useAudioRecorder = () => {
         }
 
         mediaRecorderRef.current.onstop = () => {
-            const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
+            // Determine the mime type from the recorder or fallback
+            const mimeType = mediaRecorderRef.current?.mimeType || 'audio/webm';
+            const audioBlob = new Blob(audioChunksRef.current, { type: mimeType });
+            
             // Stop all tracks to release microphone
             mediaRecorderRef.current?.stream.getTracks().forEach(track => track.stop());
             setIsRecording(false);

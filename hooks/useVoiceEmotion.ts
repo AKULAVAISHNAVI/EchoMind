@@ -1,11 +1,12 @@
 import { useState, useRef, useCallback } from 'react';
 import { Mood } from '../types';
-import { analyzeVoiceFeatures } from '../services/voiceEmotionService';
+import { analyzeVoiceFeatures, ensureMeyda } from '../services/voiceEmotionService';
 
 // Add Meyda to the global window interface for TypeScript
 declare global {
     interface Window {
-        Meyda: any;
+        // FIX: Make Meyda property optional to match declaration in other files and prevent type errors.
+        Meyda?: any;
     }
 }
 
@@ -22,9 +23,17 @@ export const useVoiceEmotion = () => {
     const callbackCounterRef = useRef(0);
 
     const startEmotionAnalysis = useCallback(async () => {
-        if (isAnalyzing || !window.Meyda) return;
+        if (isAnalyzing) return;
 
         try {
+            // Ensure Meyda is loaded before attempting to use it
+            await ensureMeyda();
+            
+            if (!window.Meyda) {
+                console.error("Meyda library failed to load");
+                return;
+            }
+
             if (!audioContext) {
                 audioContext = new AudioContext();
             }

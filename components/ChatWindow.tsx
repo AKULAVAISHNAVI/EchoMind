@@ -1,10 +1,9 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { ChatMessage, Dream, Sender, Mood, CustomizationSettings } from '../types';
 import { analyzeDream } from '../services/geminiService';
-import { PaperPlaneIcon, UserIcon, EchoAvatarIcon, MicIcon, CheckCircleIcon, CloudUploadIcon } from './Icons';
+import { PaperPlaneIcon, UserIcon, EchoAvatarIcon, MicIcon, CheckCircleIcon } from './Icons';
 import { MOOD_OPTIONS, ECHO_PERSONALITIES, APP_THEMES } from '../constants';
 import { RecordDreamModal } from './RecordDreamModal';
-import { UploadDreamModal } from './CloudUrlModal';
 import { useVoiceEmotion } from '../hooks/useVoiceEmotion';
 
 interface ChatWindowProps {
@@ -77,7 +76,6 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({ addDream, isNightMode, s
   const [isLoading, setIsLoading] = useState(false);
   const [pendingDream, setPendingDream] = useState<Omit<Dream, 'mood'> | null>(null);
   const [isRecordModalOpen, setIsRecordModalOpen] = useState(false);
-  const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
   const [showToast, setShowToast] = useState(false);
   const [isVoiceSending, setIsVoiceSending] = useState(false);
 
@@ -260,14 +258,6 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({ addDream, isNightMode, s
                     <MicIcon className="w-5 h-5" />
                     Record Dream
                 </button>
-                 <button
-                    onClick={() => setIsUploadModalOpen(true)}
-                    className={`w-full flex items-center justify-center gap-2 p-3 rounded-xl font-semibold transition-all duration-300 ${isNightMode ? 'bg-slate-700 hover:bg-slate-600' : 'bg-slate-600 hover:bg-slate-500'} text-white ${animationsEnabled ? 'active:scale-95' : ''}`}
-                    disabled={isLoading}
-                >
-                    <CloudUploadIcon className="w-5 h-5" />
-                    Upload Dream
-                </button>
             </div>
             <form onSubmit={handleSubmit} className="flex items-center gap-2">
                 <textarea
@@ -313,15 +303,6 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({ addDream, isNightMode, s
         onClose={() => setIsRecordModalOpen(false)}
         onSend={(dreamText, detectedMood) => {
           setIsRecordModalOpen(false);
-          handleSendDream(dreamText, detectedMood);
-        }}
-        isNightMode={isNightMode}
-      />
-      <UploadDreamModal
-        isOpen={isUploadModalOpen}
-        onClose={() => setIsUploadModalOpen(false)}
-        onSend={(dreamText, detectedMood) => {
-          setIsUploadModalOpen(false);
           handleSendDream(dreamText, detectedMood);
         }}
         isNightMode={isNightMode}

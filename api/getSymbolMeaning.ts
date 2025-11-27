@@ -9,8 +9,11 @@ export default async function handler(req, res) {
         const { symbol } = req.body;
         const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
         const response = await ai.models.generateContent({
-            model: 'gemini-2.5-flash-lite',
+            model: 'gemini-2.5-flash',
             contents: `Briefly explain the potential meaning of this dream symbol in one or two sentences: "${symbol}"`,
+            config: {
+                thinkingConfig: { thinkingBudget: 0 }
+            }
         });
         
         res.status(200).json({ meaning: response.text });

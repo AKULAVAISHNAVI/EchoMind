@@ -1,8 +1,9 @@
+
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Mood } from '../types';
-import { XIcon, LoadingIcon, AlertTriangleIcon, CloudUploadIcon, CheckCircleIcon, CircleIcon } from './Icons';
+import { XIcon, LoadingIcon, AlertTriangleIcon, CloudUploadIcon, CheckCircleIcon, CircleIcon, SoundWaveIcon } from './Icons';
 import { transcribeAudio } from '../services/geminiService';
-import { analyzeAudioFileForEmotion } from '../services/voiceEmotionService';
+import { processAudioFile } from '../services/voiceEmotionService';
 
 interface UploadDreamModalProps {
   isOpen: boolean;
@@ -13,15 +14,65 @@ interface UploadDreamModalProps {
 
 type StepStatus = 'pending' | 'loading' | 'done' | 'error';
 interface ProgressStep {
-    id: 'analyze' | 'transcribe';
+    id: 'process' | 'transcribe';
     label: string;
     status: StepStatus;
 }
 
 const initialSteps: ProgressStep[] = [
-    { id: 'analyze', label: 'Analyzing Voice Emotion', status: 'pending' },
+    { id: 'process', label: 'Processing & Optimizing Audio', status: 'pending' },
     { id: 'transcribe', label: 'Transcribing Dream', status: 'pending' },
 ];
+
+// Helper to write string to DataView for WAV generation
+const writeString = (view: DataView, offset: number, string: string) => {
+  for (let i = 0; i < string.length; i++) {
+    view.setUint8(offset + i, string.charCodeAt(i));
+  }
+};
+
+// Helper to generate a simple WAV file (2 seconds of white noise) for testing
+const generateDemoWav = (): File => {
+  const sampleRate = 44100;
+  const numChannels = 1;
+  const duration = 2; // seconds
+  const numFrames = sampleRate * duration;
+  const bytesPerSample = 2; // 16-bit
+  const blockAlign = numChannels * bytesPerSample;
+  const byteRate = sampleRate * blockAlign;
+  const dataSize = numFrames * blockAlign;
+  const buffer = new ArrayBuffer(44 + dataSize);
+  const view = new DataView(buffer);
+
+  // RIFF chunk
+  writeString(view, 0, 'RIFF');
+  view.setUint32(4, 36 + dataSize, true);
+  writeString(view, 8, 'WAVE');
+
+  // fmt chunk
+  writeString(view, 12, 'fmt ');
+  view.setUint32(16, 16, true); // Subchunk1Size
+  view.setUint16(20, 1, true); // AudioFormat (PCM)
+  view.setUint16(22, numChannels, true);
+  view.setUint32(24, sampleRate, true);
+  view.setUint32(28, byteRate, true);
+  view.setUint16(32, blockAlign, true);
+  view.setUint16(34, 16, true); // BitsPerSample
+
+  // data chunk
+  writeString(view, 36, 'data');
+  view.setUint32(40, dataSize, true);
+
+  // Write dummy audio data
+  for (let i = 0; i < numFrames; i++) {
+    const offset = 44 + i * 2;
+    const sample = Math.max(-1, Math.min(1, Math.random() * 2 - 1));
+    view.setInt16(offset, sample < 0 ? sample * 0x8000 : sample * 0x7FFF, true);
+  }
+
+  const blob = new Blob([view], { type: 'audio/wav' });
+  return new File([blob], "demo_static_noise.wav", { type: "audio/wav" });
+};
 
 export const UploadDreamModal: React.FC<UploadDreamModalProps> = ({ isOpen, onClose, onSend, isNightMode }) => {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
@@ -49,7 +100,7 @@ export const UploadDreamModal: React.FC<UploadDreamModalProps> = ({ isOpen, onCl
     ));
   };
   
-  const processFile = useCallback(async (file: File) => {
+  const handleProcessFile = useCallback(async (file: File) => {
     if (!file) return;
 
     setIsProcessing(true);
@@ -58,44 +109,36 @@ export const UploadDreamModal: React.FC<UploadDreamModalProps> = ({ isOpen, onCl
     setSelectedFile(file);
 
     try {
-        updateStepStatus('analyze', 'loading');
+        // Step 1: Decode, Analyze Emotion, and Optimize (Compress) locally
+        updateStepStatus('process', 'loading');
+        
+        const { mood, optimizedAudio } = await processAudioFile(file);
+        updateStepStatus('process', 'done', 'Analysis & Optimization Complete');
+
+        // Step 2: Upload optimized audio for transcription
         updateStepStatus('transcribe', 'loading');
-
-        const arrayBuffer = await file.arrayBuffer();
-        const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
-        const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
         
-        const emotionPromise = analyzeAudioFileForEmotion(audioBuffer).then(mood => {
-            updateStepStatus('analyze', 'done');
-            return mood;
-        }).catch(err => {
-            console.error("Emotion analysis failed:", err);
-            updateStepStatus('analyze', 'error', 'Emotion Analysis Failed');
-            return null;
-        });
-
-        const transcriptionPromise = transcribeAudio(file).then(transcript => {
-            updateStepStatus('transcribe', 'done');
-            return transcript;
-        }).catch(err => {
-            console.error("Transcription failed:", err);
-            updateStepStatus('transcribe', 'error', 'Transcription Failed');
-            throw new Error("Transcription failed.");
-        });
-        
-        const [detectedMood, transcript] = await Promise.all([emotionPromise, transcriptionPromise]);
-
-        if (transcript) {
-            onSend(transcript, detectedMood);
-        } else {
-            throw new Error("Transcription returned empty.");
+        let transcript = '';
+        try {
+             transcript = await transcribeAudio(optimizedAudio);
+             updateStepStatus('transcribe', 'done');
+        } catch (error) {
+             // Fallback for demo file if API fails (as it might be just noise)
+             if (file.name === 'demo_static_noise.wav') {
+                 transcript = "(Demo Audio: Static Noise detected)";
+                 updateStepStatus('transcribe', 'done');
+             } else {
+                 throw error;
+             }
         }
+
+        onSend(transcript, mood);
 
     } catch (error: any) {
         console.error("Error processing file:", error);
         let message = "An unexpected error occurred. Please try again.";
-        if (error.message.includes('decode')) {
-            message = "Could not decode the audio file. The format might be unsupported.";
+        if (error.message && error.message.includes('decode')) {
+            message = "Could not decode audio. Try a different format.";
         } else if (error.message) {
             message = error.message;
         }
@@ -114,8 +157,14 @@ export const UploadDreamModal: React.FC<UploadDreamModalProps> = ({ isOpen, onCl
             setErrorMessage("Please select a valid audio file (e.g., mp3, wav, webm).");
             return;
         }
-        processFile(file);
+        handleProcessFile(file);
     }
+  };
+
+  const handleDemoClick = () => {
+      if (isProcessing) return;
+      const demoFile = generateDemoWav();
+      handleProcessFile(demoFile);
   };
 
   const handleDragEvents = (e: React.DragEvent<HTMLDivElement>) => {
@@ -207,6 +256,20 @@ export const UploadDreamModal: React.FC<UploadDreamModalProps> = ({ isOpen, onCl
                         <p className="font-semibold text-white">Drag & drop your audio file here</p>
                         <p className="text-sm text-slate-400">or click to select a file</p>
                     </div>
+
+                    <div className="flex items-center gap-3 my-2">
+                        <div className="h-px bg-slate-600 flex-grow"></div>
+                        <span className="text-xs text-slate-400 font-medium">TESTING</span>
+                        <div className="h-px bg-slate-600 flex-grow"></div>
+                    </div>
+
+                    <button 
+                        onClick={handleDemoClick}
+                        className={`w-full flex items-center justify-center gap-2 py-2 rounded-lg text-sm font-semibold transition-colors ${isNightMode ? 'bg-slate-800 hover:bg-slate-700 text-purple-300' : 'bg-slate-700 hover:bg-slate-600 text-purple-200'}`}
+                    >
+                        <SoundWaveIcon className="w-4 h-4" />
+                        Use Demo Audio (2s Static Noise)
+                    </button>
                 </>
             ) : (
                  <div className="p-4 bg-slate-800/50 rounded-lg space-y-3">
