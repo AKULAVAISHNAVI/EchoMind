@@ -3,7 +3,7 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Mood } from '../types';
 import { XIcon, LoadingIcon, AlertTriangleIcon, CloudUploadIcon, CheckCircleIcon, CircleIcon, SoundWaveIcon } from './Icons';
 import { transcribeAudio } from '../services/geminiService';
-import { processAudioFile } from '../services/voiceEmotionService';
+import { analyzeAudioFileForEmotion } from '../services/voiceEmotionService';
 
 interface UploadDreamModalProps {
   isOpen: boolean;
@@ -20,7 +20,7 @@ interface ProgressStep {
 }
 
 const initialSteps: ProgressStep[] = [
-    { id: 'process', label: 'Processing & Optimizing Audio', status: 'pending' },
+    { id: 'process', label: 'Analyzing Emotion', status: 'pending' },
     { id: 'transcribe', label: 'Transcribing Dream', status: 'pending' },
 ];
 
@@ -76,6 +76,7 @@ const generateDemoWav = (): File => {
 
 export const UploadDreamModal: React.FC<UploadDreamModalProps> = ({ isOpen, onClose, onSend, isNightMode }) => {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [filePreviewUrl, setFilePreviewUrl] = useState<string | null>(null);
   const [progressSteps, setProgressSteps] = useState<ProgressStep[]>(initialSteps);
   const [isProcessing, setIsProcessing] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
@@ -87,12 +88,21 @@ export const UploadDreamModal: React.FC<UploadDreamModalProps> = ({ isOpen, onCl
     if (!isOpen) {
         setTimeout(() => {
             setSelectedFile(null);
+            if (filePreviewUrl) URL.revokeObjectURL(filePreviewUrl);
+            setFilePreviewUrl(null);
             setProgressSteps(initialSteps);
             setErrorMessage('');
             setIsProcessing(false);
         }, 300); // Wait for closing animation
     }
   }, [isOpen]);
+
+  // Clean up object URL on unmount or file change
+  useEffect(() => {
+    return () => {
+        if (filePreviewUrl) URL.revokeObjectURL(filePreviewUrl);
+    };
+  }, [filePreviewUrl]);
 
   const updateStepStatus = (id: ProgressStep['id'], status: StepStatus, newLabel?: string) => {
     setProgressSteps(prevSteps => prevSteps.map(step => 
@@ -107,15 +117,19 @@ export const UploadDreamModal: React.FC<UploadDreamModalProps> = ({ isOpen, onCl
     setErrorMessage('');
     setProgressSteps(initialSteps);
     setSelectedFile(file);
+    
+    // Create Object URL for preview/handling
+    const url = URL.createObjectURL(file);
+    setFilePreviewUrl(url);
 
     try {
-        // Step 1: Decode, Analyze Emotion, and Optimize (Compress) locally
+        // Step 1: Analyze Emotion
         updateStepStatus('process', 'loading');
         
-        const { mood, optimizedAudio } = await processAudioFile(file);
-        updateStepStatus('process', 'done', 'Analysis & Optimization Complete');
+        const { mood, optimizedAudio } = await analyzeAudioFileForEmotion(file);
+        updateStepStatus('process', 'done', 'Emotion Analysis Complete');
 
-        // Step 2: Upload optimized audio for transcription
+        // Step 2: Upload for transcription
         updateStepStatus('transcribe', 'loading');
         
         let transcript = '';
@@ -207,6 +221,8 @@ export const UploadDreamModal: React.FC<UploadDreamModalProps> = ({ isOpen, onCl
   
   const resetState = () => {
     setSelectedFile(null);
+    if (filePreviewUrl) URL.revokeObjectURL(filePreviewUrl);
+    setFilePreviewUrl(null);
     setProgressSteps(initialSteps);
     setErrorMessage('');
     setIsProcessing(false);
@@ -276,6 +292,9 @@ export const UploadDreamModal: React.FC<UploadDreamModalProps> = ({ isOpen, onCl
                     <p className="text-sm font-medium text-white truncate">
                         File: <span className="text-slate-300">{selectedFile.name}</span>
                     </p>
+                    {filePreviewUrl && (
+                        <audio controls src={filePreviewUrl} className="w-full h-8" />
+                    )}
                     {progressSteps.map(step => (
                         <div key={step.id} className="flex items-center gap-3">
                             <StepIcon status={step.status} />

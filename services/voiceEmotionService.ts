@@ -130,7 +130,7 @@ export const ensureMeyda = (timeout = 15000): Promise<void> => {
     });
 };
 
-export const processAudioFile = async (file: File): Promise<{ mood: Mood; optimizedAudio: Blob }> => {
+export const analyzeAudioFileForEmotion = async (file: File): Promise<{ mood: Mood; optimizedAudio: Blob }> => {
     await ensureMeyda();
     if (!window.Meyda) throw new Error("Meyda library not loaded");
 
@@ -143,12 +143,14 @@ export const processAudioFile = async (file: File): Promise<{ mood: Mood; optimi
     const features: any[] = [];
 
     // Extract features from the audio buffer in chunks
-    for (let i = 0; i < channelData.length; i += bufferSize) {
+    // Optimization: limit to first 15 seconds to prevent freezing on long files
+    const maxSamples = Math.min(channelData.length, audioBuffer.sampleRate * 15);
+    
+    for (let i = 0; i < maxSamples; i += bufferSize) {
         const chunk = channelData.slice(i, i + bufferSize);
         let signal = chunk;
         
         if (chunk.length < bufferSize) {
-            // Pad the last chunk with zeros if necessary
             signal = new Float32Array(bufferSize);
             signal.set(chunk);
         }
@@ -168,7 +170,5 @@ export const processAudioFile = async (file: File): Promise<{ mood: Mood; optimi
     
     await audioContext.close();
 
-    // For now, we return the original file as the optimized blob.
-    // In a production environment, we might want to re-encode this to a standard format/rate here.
     return { mood, optimizedAudio: file };
 };

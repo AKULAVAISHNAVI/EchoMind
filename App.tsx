@@ -1,9 +1,4 @@
 
-
-
-
-
-
 import React, { useState, useCallback, PropsWithChildren, useEffect } from 'react';
 import { ChatWindow } from './components/ChatWindow';
 import { DreamJournal } from './components/DreamJournal';
@@ -134,7 +129,7 @@ const App: React.FC = () => {
         clearDreams={clearDreams}
       />
 
-      <div className={`w-full max-w-4xl flex-grow flex flex-col backdrop-blur-xl rounded-2xl shadow-2xl overflow-hidden transition-colors duration-500 border ${isNightMode ? `${themeStyles.containerBgNight} ${themeStyles.containerBorderNight}` : `${themeStyles.containerBgDay} ${themeStyles.containerBorderDay}`}`}>
+      <div className={`w-full max-w-4xl flex-grow flex flex-col backdrop-blur-xl rounded-2xl shadow-2xl transition-colors duration-500 border ${isNightMode ? `${themeStyles.containerBgNight} ${themeStyles.containerBorderNight}` : `${themeStyles.containerBgDay} ${themeStyles.containerBorderDay}`}`}>
         <nav className={`flex justify-center p-2 border-b transition-colors duration-500 ${isNightMode ? `${themeStyles.containerBorderNight}` : `${themeStyles.containerBorderDay}`}`}>
           <div className={`flex items-center gap-4 p-1.5 rounded-full transition-colors duration-500 ${isNightMode ? 'bg-black/30' : 'bg-black/20'}`}>
             <NavButton view={View.Chat} label="Chat with Echo">
@@ -146,7 +141,7 @@ const App: React.FC = () => {
           </div>
         </nav>
         
-        <main key={activeView} className={`flex-grow p-4 overflow-y-auto ${animationsEnabled ? 'animate-view-in' : ''}`}>
+        <main key={activeView} className={`flex-grow p-4 ${animationsEnabled ? 'animate-view-in' : ''}`}>
           {activeView === View.Chat ? (
             <ChatWindow 
                 key={settings.personality} // Force re-mount on personality change to reset chat

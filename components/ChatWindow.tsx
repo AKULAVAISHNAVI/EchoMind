@@ -2,9 +2,10 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { ChatMessage, Dream, Sender, Mood, CustomizationSettings } from '../types';
 import { analyzeDream } from '../services/geminiService';
-import { PaperPlaneIcon, UserIcon, EchoAvatarIcon, MicIcon, CheckCircleIcon } from './Icons';
+import { PaperPlaneIcon, UserIcon, EchoAvatarIcon, MicIcon, CheckCircleIcon, CloudUploadIcon } from './Icons';
 import { MOOD_OPTIONS, ECHO_PERSONALITIES, APP_THEMES } from '../constants';
 import { RecordDreamModal } from './RecordDreamModal';
+import { UploadDreamModal } from './CloudUrlModal';
 import { useVoiceEmotion } from '../hooks/useVoiceEmotion';
 
 interface ChatWindowProps {
@@ -77,6 +78,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({ addDream, isNightMode, s
   const [isLoading, setIsLoading] = useState(false);
   const [pendingDream, setPendingDream] = useState<Omit<Dream, 'mood'> | null>(null);
   const [isRecordModalOpen, setIsRecordModalOpen] = useState(false);
+  const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
   const [showToast, setShowToast] = useState(false);
   const [isVoiceSending, setIsVoiceSending] = useState(false);
 
@@ -224,7 +226,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({ addDream, isNightMode, s
   const isConversationStarted = messages.length > 2;
 
   return (
-    <div className="flex flex-col h-full max-h-[70vh] sm:max-h-full relative">
+    <div className="flex flex-col h-full min-h-[60vh] relative">
        {showToast && (
             <div className={`absolute top-0 left-1/2 -translate-x-1/2 z-20 flex items-center gap-2 px-4 py-2 rounded-full text-sm font-medium transition-all duration-300 ${animationsEnabled ? 'animate-toast-in-out' : ''} ${isNightMode ? 'bg-green-600 text-white' : 'bg-green-500 text-white'}`}>
                 <CheckCircleIcon className="w-5 h-5" />
@@ -256,12 +258,22 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({ addDream, isNightMode, s
             <div className="flex items-center gap-2">
                 <button
                     onClick={() => setIsRecordModalOpen(true)}
-                    className={`w-full flex items-center justify-center gap-2 p-3 rounded-xl font-semibold transition-all duration-300 ${themeStyles.userBubbleBg} hover:opacity-90 text-white ${animationsEnabled ? 'active:scale-95' : ''}`}
+                    className={`flex-grow flex items-center justify-center gap-2 p-3 rounded-xl font-semibold transition-all duration-300 ${themeStyles.userBubbleBg} hover:opacity-90 text-white ${animationsEnabled ? 'active:scale-95' : ''}`}
                     disabled={isLoading}
                 >
                     <MicIcon className="w-5 h-5" />
                     {isConversationStarted ? "Record Reply" : "Record Dream"}
                 </button>
+                 {!isConversationStarted && (
+                    <button
+                        onClick={() => setIsUploadModalOpen(true)}
+                        className={`p-3 rounded-xl transition-all duration-300 ${themeStyles.userBubbleBg} hover:opacity-90 text-white ${animationsEnabled ? 'active:scale-95' : ''}`}
+                        disabled={isLoading}
+                        aria-label="Upload Dream Audio"
+                    >
+                        <CloudUploadIcon className="w-5 h-5" />
+                    </button>
+                )}
             </div>
             <form onSubmit={handleSubmit} className="flex items-center gap-2">
                 <textarea
@@ -308,6 +320,15 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({ addDream, isNightMode, s
         onSend={(dreamText, detectedMood) => {
           setIsRecordModalOpen(false);
           handleSendDream(dreamText, detectedMood);
+        }}
+        isNightMode={isNightMode}
+      />
+      <UploadDreamModal
+        isOpen={isUploadModalOpen}
+        onClose={() => setIsUploadModalOpen(false)}
+        onSend={(dreamText, detectedMood) => {
+            setIsUploadModalOpen(false);
+            handleSendDream(dreamText, detectedMood);
         }}
         isNightMode={isNightMode}
       />
