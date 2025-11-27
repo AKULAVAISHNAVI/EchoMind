@@ -37,7 +37,7 @@ export default async function handler(req, res) {
         if (userMessagesCount === 1) {
             let contextHeader = '';
             if (detectedEmotion) {
-                contextHeader += `(System note: The user's voice was analyzed and detected as feeling ${detectedEmotion})\n`;
+                contextHeader += `(System note: The user's voice was analyzed and detected as feeling ${detectedEmotion}. Adjust your tone accordingly.)\n`;
             }
             if (recentMoods && recentMoods.length > 0) {
                 contextHeader += `(System note: User's recent mood history (last 7 days): ${recentMoods.join(', ')})\n`;
@@ -56,6 +56,9 @@ export default async function handler(req, res) {
         contents: contents,
         config: {
             systemInstruction: systemInstruction,
+            temperature: 1.1, // Higher temperature for more creative, varied responses
+            topP: 0.95, // Wider sampling to avoid repetitive phrasing
+            topK: 64,
         },
         // Add safety settings, which is a good practice for a public-facing application.
         safetySettings: [
